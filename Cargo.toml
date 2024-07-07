@@ -1,6 +1,10 @@
 [package]
 name = "argon2-cloudflare"
-version = "0.1.0"
+description = "Argon2 password hashing for Cloudflare Workers"
+version = "1.0.0"
+license = "MIT"
+authors = ["Frédérique Mittelstaedt <git@gfm.io> (https://gfm.io)"]
+publish = false
 edition = "2021"
 
 [features]
