@@ -1,6 +1,16 @@
 name = "argon2"
 main = "build/worker/shim.mjs"
-compatibility_date = "2023-03-22"
+compatibility_date = "2024-06-03"
+
+# Disables the workers.dev subdomain
+workers_dev = false
 
 [build]
-command = "cargo install -q worker-build && worker-build --release"
+# Enable both the RPC and HTTP features
+# command = "cargo install -q worker-build && worker-build --release"
+
+# Enable only the RPC feature
+command = "cargo install -q worker-build && worker-build --release --no-default-features --features rpc"
+
+# Enable only the HTTP feature
+# command = "cargo install -q worker-build && worker-build --release --no-default-features --features http"
