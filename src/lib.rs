@@ -7,7 +7,12 @@ use worker::Env;
 use worker::Method;
 use worker::Request;
 use worker::Response;
+use wasm_bindgen::{prelude::wasm_bindgen, JsValue};
+use serde_wasm_bindgen::{to_value, from_value};
 
+// HTTP
+
+#[cfg(feature = "http")]
 #[worker::event(fetch)]
 async fn main(req: Request, _env: Env, _ctx: Context) -> worker::Result<Response> {
     let result = match (req.method(), req.path().as_ref()) {
@@ -20,6 +25,26 @@ async fn main(req: Request, _env: Env, _ctx: Context) -> worker::Result<Response
         Ok(body) => Response::ok(body),
         Err(err) => err.to_response(),
     }
+}
+
+// RPC
+
+#[cfg(feature = "rpc")]
+#[wasm_bindgen]
+pub fn hash(request: JsValue) -> Result<JsValue, JsValue> {
+    let hash_request: HashRequest = from_value(request).map_err(|err| err.to_string())?;
+    let result = hash_password(&hash_request.password, hash_request.options).map_err(|err| err.to_string())?;
+    let output = HashResponse { hash: result };
+    to_value(&output).map_err(|err| to_value(&err.to_string()).unwrap())
+}
+
+#[cfg(feature = "rpc")]
+#[wasm_bindgen]
+pub fn verify(request: JsValue) -> Result<JsValue, JsValue> {
+    let verify_request: VerifyRequest = from_value(request).map_err(|err| err.to_string())?;
+    let result = verify_password(&verify_request).map_err(|err| err.to_string())?;
+    let output = VerifyResponse { matches: result };
+    to_value(&output).map_err(|err| to_value(&err.to_string()).unwrap())
 }
 
 // HASH
@@ -51,7 +76,7 @@ async fn hash_handler(mut req: Request) -> Result<String, Error> {
         .await
         .map_err(|err| Error::DecodeBody(err.to_string()))?;
 
-    let password_hash = hash(&hash_req.password, hash_req.options)?;
+    let password_hash = hash_password(&hash_req.password, hash_req.options)?;
 
     let hash_response = HashResponse {
         hash: password_hash,
@@ -59,7 +84,7 @@ async fn hash_handler(mut req: Request) -> Result<String, Error> {
     serde_json::to_string(&hash_response).map_err(|err| Error::EncodeBody(err.to_string()))
 }
 
-fn hash(password: &str, options: Option<HashOptions>) -> Result<String, Error> {
+fn hash_password(password: &str, options: Option<HashOptions>) -> Result<String, Error> {
     let salt = SaltString::generate(&mut OsRng);
 
     let argon2 = match options {
@@ -104,12 +129,12 @@ async fn verify_handler(mut req: Request) -> Result<String, Error> {
         .await
         .map_err(|err| Error::DecodeBody(err.to_string()))?;
 
-    let matches = verify(&options)?;
+    let matches = verify_password(&options)?;
     let verify_response = VerifyResponse { matches };
     serde_json::to_string(&verify_response).map_err(|err| Error::EncodeBody(err.to_string()))
 }
 
-fn verify(options: &VerifyRequest) -> Result<bool, Error> {
+fn verify_password(options: &VerifyRequest) -> Result<bool, Error> {
     let password_hash = PasswordHash::new(&options.hash)
         .map_err(|err| Error::InvalidPasswordHash(err.to_string()))?;
 
@@ -138,6 +163,17 @@ enum Error {
 }
 
 impl Error {
+    fn to_string(&self) -> String {
+        match self {
+            Error::InvalidRoute => "Route not found".to_string(),
+            Error::DecodeBody(err) => format!("Failed to decode request body: {}", err),
+            Error::EncodeBody(err) => format!("Failed to encode response body: {}", err),
+            Error::HashOptions(err) => format!("Invalid hash options: {}", err),
+            Error::Hash(err) => format!("Failed to hash password: {}", err),
+            Error::InvalidPasswordHash(err) => format!("Invalid password hash: {}", err),
+            Error::Verify(err) => format!("Failed to verify password: {}", err),
+        }
+    }
     fn to_response(&self) -> worker::Result<Response> {
         match self {
             Error::InvalidRoute => Response::error("Route not found", 404),
